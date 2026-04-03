@@ -222,6 +222,33 @@
     .ai-section { margin-bottom: 150px; }
     .video-wrapper { width: 100%; aspect-ratio: 16/9; background: #111; position: relative; }
     .video-wrapper video { width: 100%; height: 100%; outline: none; }
+
+    /* 视频加载占位符 */
+    .video-placeholder {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+    }
+    .video-loading-text {
+      color: #666;
+      font-size: 1rem;
+      letter-spacing: 2px;
+    }
+    .video-spinner {
+      width: 40px; height: 40px;
+      border: 3px solid #333;
+      border-top-color: #40e0d0;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
     footer { text-align: center; padding: 100px 0 50px; color: var(--text-muted); border-top: 1px solid var(--border-color); }
 
     .reveal { opacity: 0; transform: translateY(40px); }
@@ -319,9 +346,13 @@
       <div class="section-title">
         <span>03. AI FILM</span><span>生成艺术短片</span>
       </div>
-      <div class="video-wrapper hover-target">
-        <video controls>
-          <source src="ai短片/AI短片最终版.mp4" type="video/mp4">
+      <div class="video-wrapper hover-target" id="video-container">
+        <div class="video-placeholder" id="video-placeholder">
+          <div class="video-loading-text">AI 短片加载中...</div>
+          <div class="video-spinner"></div>
+        </div>
+        <video controls id="ai-video" style="display: none;">
+          <source data-src="ai短片/AI短片最终版.mp4" type="video/mp4">
           你的浏览器不支持视频标签。
         </video>
       </div>
@@ -511,6 +542,46 @@
       camera.aspect = container.clientWidth / container.clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+  </script>
+
+  <!-- 视频懒加载 -->
+  <script>
+    // 等待所有图片加载完成后再考虑加载视频
+    window.addEventListener('load', () => {
+      const videoContainer = document.getElementById('video-container');
+      const videoPlaceholder = document.getElementById('video-placeholder');
+      const video = document.getElementById('ai-video');
+      const videoSource = video.querySelector('source');
+
+      // 使用 Intersection Observer 检测视频是否进入视口
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            // 视频进入视口，开始加载
+            const videoSrc = videoSource.getAttribute('data-src');
+            if (videoSrc) {
+              videoSource.src = videoSrc;
+              videoSource.removeAttribute('data-src');
+              video.load();
+
+              // 视频加载完成后显示
+              video.addEventListener('loadeddata', () => {
+                videoPlaceholder.style.display = 'none';
+                video.style.display = 'block';
+              });
+
+              // 停止观察
+              observer.unobserve(videoContainer);
+            }
+          }
+        });
+      }, {
+        rootMargin: '100px', // 提前 100px 开始加载
+        threshold: 0.1
+      });
+
+      observer.observe(videoContainer);
     });
   </script>
 </body>
