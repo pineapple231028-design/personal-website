@@ -178,6 +178,42 @@
     .filmstrip-track::before { top: 10px; }
     .filmstrip-track::after { bottom: 10px; }
 
+    /* 左右箭头按钮 */
+    .gallery-arrow {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 50px;
+      height: 80px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 24px;
+      cursor: pointer;
+      z-index: 100;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .gallery-arrow:hover {
+      background: rgba(0, 0, 0, 0.6);
+      color: white;
+    }
+    .gallery-arrow-left {
+      left: 2vw;
+    }
+    .gallery-arrow-right {
+      right: 2vw;
+    }
+    @media (max-width: 768px) {
+      .gallery-arrow {
+        width: 40px;
+        height: 60px;
+        font-size: 18px;
+      }
+    }
+
     /* ========== 02. 影像：海报遮罩入场 + 剧照画廊 ========== */
     .film-project {
       display: grid; grid-template-columns: 1fr 1fr; gap: 60px;
@@ -288,7 +324,11 @@
       </div>
     </div>
     
-    <div class="filmstrip-track">
+    <!-- 左右箭头按钮 -->
+    <button class="gallery-arrow gallery-arrow-left" id="gallery-prev" aria-label="上一张">&#10094;</button>
+    <button class="gallery-arrow gallery-arrow-right" id="gallery-next" aria-label="下一张">&#10095;</button>
+
+    <div class="filmstrip-track" id="filmstrip">
       <!-- 20张占位图，请替换为你的照片链接 -->
       <div class="photo-item hover-target"><img src="摄影画廊/图片1.JPG" alt="Photo 1"></div>
       <div class="photo-item hover-target"><img src="摄影画廊/图片2.jpg" alt="Photo 2"></div>
@@ -383,12 +423,16 @@
     const horizontalSection = document.querySelector('.horizontal-scroll-section');
     const filmstrip = document.querySelector('.filmstrip-track');
     let horizontalScrollInitialized = false;
+    let horizontalTween = null;
 
     function initHorizontalScroll() {
       if (horizontalScrollInitialized) return;
       horizontalScrollInitialized = true;
 
-      gsap.to(filmstrip, {
+      // 先刷新 ScrollTrigger 确保宽度计算正确
+      ScrollTrigger.refresh();
+
+      horizontalTween = gsap.to(filmstrip, {
         x: () => -(filmstrip.scrollWidth - window.innerWidth) + "px",
         ease: "none",
         scrollTrigger: {
@@ -396,9 +440,21 @@
           pin: true,
           scrub: 1,
           anticipatePin: 1,
-          end: () => "+=" + (filmstrip.scrollWidth - window.innerWidth)
+          invalidateOnRefresh: true,
+          end: () => "+=" + (filmstrip.scrollWidth - window.innerWidth),
+          onRefresh: () => {
+            console.log('ScrollTrigger refreshed, width:', filmstrip.scrollWidth);
+          }
         }
       });
+    }
+
+    function checkAllLoaded() {
+      // 延迟一点确保 DOM 完全渲染
+      setTimeout(() => {
+        ScrollTrigger.refresh();
+        initHorizontalScroll();
+      }, 100);
     }
 
     // 等待所有图片加载完成后再初始化横向滚动
@@ -406,13 +462,8 @@
     let loadedImages = 0;
     const totalImages = images.length;
 
-    function checkAllLoaded() {
-      ScrollTrigger.refresh();
-      initHorizontalScroll();
-    }
-
     if (totalImages === 0) {
-      initHorizontalScroll();
+      checkAllLoaded();
     } else {
       images.forEach(img => {
         if (img.complete) {
@@ -429,19 +480,37 @@
         }
       });
 
-      // Safari 兼容：超时强制初始化（最多等3秒）
-      setTimeout(() => {
-        if (!horizontalScrollInitialized) {
-          console.log('Safari fallback: forcing scroll initialization');
-          checkAllLoaded();
-        }
-      }, 3000);
-
-      // 如果图片已缓存（complete），立即初始化
+      // 立即检查是否已缓存
       if (loadedImages >= totalImages) {
         checkAllLoaded();
       }
+
+      // 多重保险：多个时间点强制初始化
+      [1000, 2000, 3000].forEach(delay => {
+        setTimeout(() => {
+          if (!horizontalScrollInitialized) {
+            console.log(`Fallback ${delay}ms: forcing scroll initialization`);
+            checkAllLoaded();
+          }
+        }, delay);
+      });
     }
+
+    // 窗口大小改变时刷新
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        ScrollTrigger.refresh();
+      }, 250);
+    });
+
+    // 页面可见性改变时刷新（处理切换标签页后回来）
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        ScrollTrigger.refresh();
+      }
+    });
 
     const posterContainer = document.querySelector('.poster-container');
     const posterMask = document.querySelector('.poster-mask');
@@ -598,6 +667,75 @@
 
       observer.observe(videoContainer);
     });
+
+    // 摄影画廊箭头点击滚动
+    (function() {
+      const prevBtn = document.getElementById('gallery-prev');
+      const nextBtn = document.getElementById('gallery-next');
+      const filmstrip = document.getElementById('filmstrip');
+
+      if (!prevBtn || !nextBtn || !filmstrip) return;
+
+      // 计算每张图片的宽度（包含间距）
+      function getScrollAmount() {
+        const firstItem = filmstrip.querySelector('.photo-item');
+        if (!firstItem) return window.innerWidth * 0.4;
+        const style = window.getComputedStyle(filmstrip);
+        const gap = parseInt(style.gap) || 0;
+        return firstItem.offsetWidth + gap;
+      }
+
+      // 获取当前滚动位置（基于 filmstrip 的 transform）
+      function getCurrentX() {
+        const transform = window.getComputedStyle(filmstrip).transform;
+        if (transform === 'none') return 0;
+        const matrix = transform.match(/matrix\(([^)]+)\)/);
+        if (matrix) {
+          const values = matrix[1].split(',');
+          return parseFloat(values[4]) || 0;
+        }
+        return 0;
+      }
+
+      // 获取最大滚动距离
+      function getMaxScroll() {
+        return -(filmstrip.scrollWidth - window.innerWidth);
+      }
+
+      prevBtn.addEventListener('click', () => {
+        const scrollAmount = getScrollAmount();
+        const currentX = getCurrentX();
+        const maxScroll = getMaxScroll();
+        let newX = currentX + scrollAmount;
+
+        // 限制不能超出右边界
+        if (newX > 0) newX = 0;
+
+        gsap.to(filmstrip, {
+          x: newX,
+          duration: 0.5,
+          ease: "power2.out",
+          onUpdate: () => ScrollTrigger.update()
+        });
+      });
+
+      nextBtn.addEventListener('click', () => {
+        const scrollAmount = getScrollAmount();
+        const currentX = getCurrentX();
+        const maxScroll = getMaxScroll();
+        let newX = currentX - scrollAmount;
+
+        // 限制不能超出左边界
+        if (newX < maxScroll) newX = maxScroll;
+
+        gsap.to(filmstrip, {
+          x: newX,
+          duration: 0.5,
+          ease: "power2.out",
+          onUpdate: () => ScrollTrigger.update()
+        });
+      });
+    })();
   </script>
 </body>
 </html>
