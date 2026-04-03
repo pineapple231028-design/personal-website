@@ -320,7 +320,8 @@
         <span>03. AI FILM</span><span>生成艺术短片</span>
       </div>
       <div class="video-wrapper hover-target">
-        <video controls poster="你的视频封面图.jpg">
+        <video controls>
+          <source src="AI短片/AI短片最终版.mp4" type="video/mp4">
           你的浏览器不支持视频标签。
         </video>
       </div>
@@ -350,14 +351,51 @@
 
     const horizontalSection = document.querySelector('.horizontal-scroll-section');
     const filmstrip = document.querySelector('.filmstrip-track');
-    gsap.to(filmstrip, {
-      x: () => -(filmstrip.scrollWidth - window.innerWidth) + "px",
-      ease: "none",
-      scrollTrigger: {
-        trigger: horizontalSection, pin: true, scrub: 1,         
-        end: () => "+=" + (filmstrip.scrollWidth - window.innerWidth)
-      }
-    });
+
+    // 等待所有图片加载完成后再初始化横向滚动
+    const images = filmstrip.querySelectorAll('img');
+    let loadedImages = 0;
+    const totalImages = images.length;
+
+    function initHorizontalScroll() {
+      gsap.to(filmstrip, {
+        x: () => -(filmstrip.scrollWidth - window.innerWidth) + "px",
+        ease: "none",
+        scrollTrigger: {
+          trigger: horizontalSection, pin: true, scrub: 1,
+          end: () => "+=" + (filmstrip.scrollWidth - window.innerWidth)
+        }
+      });
+    }
+
+    if (totalImages === 0) {
+      initHorizontalScroll();
+    } else {
+      images.forEach(img => {
+        if (img.complete) {
+          loadedImages++;
+          if (loadedImages === totalImages) {
+            ScrollTrigger.refresh();
+            initHorizontalScroll();
+          }
+        } else {
+          img.addEventListener('load', () => {
+            loadedImages++;
+            if (loadedImages === totalImages) {
+              ScrollTrigger.refresh();
+              initHorizontalScroll();
+            }
+          });
+          img.addEventListener('error', () => {
+            loadedImages++;
+            if (loadedImages === totalImages) {
+              ScrollTrigger.refresh();
+              initHorizontalScroll();
+            }
+          });
+        }
+      });
+    }
 
     const posterContainer = document.querySelector('.poster-container');
     const posterMask = document.querySelector('.poster-mask');
