@@ -382,21 +382,33 @@
 
     const horizontalSection = document.querySelector('.horizontal-scroll-section');
     const filmstrip = document.querySelector('.filmstrip-track');
+    let horizontalScrollInitialized = false;
+
+    function initHorizontalScroll() {
+      if (horizontalScrollInitialized) return;
+      horizontalScrollInitialized = true;
+
+      gsap.to(filmstrip, {
+        x: () => -(filmstrip.scrollWidth - window.innerWidth) + "px",
+        ease: "none",
+        scrollTrigger: {
+          trigger: horizontalSection,
+          pin: true,
+          scrub: 1,
+          anticipatePin: 1,
+          end: () => "+=" + (filmstrip.scrollWidth - window.innerWidth)
+        }
+      });
+    }
 
     // 等待所有图片加载完成后再初始化横向滚动
     const images = filmstrip.querySelectorAll('img');
     let loadedImages = 0;
     const totalImages = images.length;
 
-    function initHorizontalScroll() {
-      gsap.to(filmstrip, {
-        x: () => -(filmstrip.scrollWidth - window.innerWidth) + "px",
-        ease: "none",
-        scrollTrigger: {
-          trigger: horizontalSection, pin: true, scrub: 1,
-          end: () => "+=" + (filmstrip.scrollWidth - window.innerWidth)
-        }
-      });
+    function checkAllLoaded() {
+      ScrollTrigger.refresh();
+      initHorizontalScroll();
     }
 
     if (totalImages === 0) {
@@ -405,27 +417,30 @@
       images.forEach(img => {
         if (img.complete) {
           loadedImages++;
-          if (loadedImages === totalImages) {
-            ScrollTrigger.refresh();
-            initHorizontalScroll();
-          }
         } else {
           img.addEventListener('load', () => {
             loadedImages++;
-            if (loadedImages === totalImages) {
-              ScrollTrigger.refresh();
-              initHorizontalScroll();
-            }
+            if (loadedImages >= totalImages) checkAllLoaded();
           });
           img.addEventListener('error', () => {
             loadedImages++;
-            if (loadedImages === totalImages) {
-              ScrollTrigger.refresh();
-              initHorizontalScroll();
-            }
+            if (loadedImages >= totalImages) checkAllLoaded();
           });
         }
       });
+
+      // Safari 兼容：超时强制初始化（最多等3秒）
+      setTimeout(() => {
+        if (!horizontalScrollInitialized) {
+          console.log('Safari fallback: forcing scroll initialization');
+          checkAllLoaded();
+        }
+      }, 3000);
+
+      // 如果图片已缓存（complete），立即初始化
+      if (loadedImages >= totalImages) {
+        checkAllLoaded();
+      }
     }
 
     const posterContainer = document.querySelector('.poster-container');
