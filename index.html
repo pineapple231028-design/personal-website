@@ -128,7 +128,7 @@
       .hero-content { padding-top: 20vh; }
     }
 
-    /* ========== 01. 摄影作品：模拟胶片横向卷动 ========== */
+    /* ========== 01. 摄影作品：可滚动画廊 ========== */
     .horizontal-scroll-section {
       position: relative;
       width: 100vw; left: 50%; right: 50%;
@@ -136,14 +136,29 @@
       background: #000;
       border-top: 1px solid #333;
       border-bottom: 1px solid #333;
+      padding: 80px 0;
+      overflow: hidden;
+    }
+    .filmstrip-wrapper {
+      position: relative;
+      width: 100%;
+      overflow: hidden;
     }
     .filmstrip-track {
       display: flex;
       align-items: center;
-      height: 100vh;
+      height: 65vh;
       width: max-content;
       padding: 0 10vw;
       gap: 5vw;
+      transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+      will-change: transform;
+    }
+    .filmstrip-track:active {
+      cursor: grabbing;
     }
     .photo-item {
       height: 65vh;
@@ -335,7 +350,8 @@
     <button class="gallery-arrow gallery-arrow-left" id="gallery-prev" aria-label="上一张">&#10094;</button>
     <button class="gallery-arrow gallery-arrow-right" id="gallery-next" aria-label="下一张">&#10095;</button>
 
-    <div class="filmstrip-track" id="filmstrip">
+    <div class="filmstrip-wrapper">
+      <div class="filmstrip-track" id="filmstrip">
       <!-- 20张占位图，请替换为你的照片链接 -->
       <div class="photo-item hover-target"><img src="摄影画廊/图片1.JPG" alt="Photo 1"></div>
       <div class="photo-item hover-target"><img src="摄影画廊/图片2.jpg" alt="Photo 2"></div>
@@ -357,6 +373,7 @@
       <div class="photo-item hover-target"><img src="摄影画廊/图片18.jpg?v=2" alt="Photo 18"></div>
       <div class="photo-item hover-target"><img src="摄影画廊/图片19.jpg" alt="Photo 19"></div>
       <div class="photo-item hover-target"><img src="摄影画廊/图片20.jpg?v=2" alt="Photo 20"></div>
+    </div>
     </div>
   </section>
 
@@ -426,82 +443,6 @@
       target.addEventListener('mouseenter', () => cursor.classList.add('active'));
       target.addEventListener('mouseleave', () => cursor.classList.remove('active'));
     });
-
-    const horizontalSection = document.querySelector('.horizontal-scroll-section');
-    const filmstrip = document.querySelector('.filmstrip-track');
-    let horizontalScrollInitialized = false;
-    let horizontalTween = null;
-
-    function initHorizontalScroll() {
-      if (horizontalScrollInitialized) return;
-      horizontalScrollInitialized = true;
-
-      // 先刷新 ScrollTrigger 确保宽度计算正确
-      ScrollTrigger.refresh();
-
-      horizontalTween = gsap.to(filmstrip, {
-        x: () => -(filmstrip.scrollWidth - window.innerWidth) + "px",
-        ease: "none",
-        scrollTrigger: {
-          trigger: horizontalSection,
-          pin: true,
-          scrub: 1,
-          anticipatePin: 1,
-          invalidateOnRefresh: true,
-          end: () => "+=" + (filmstrip.scrollWidth - window.innerWidth),
-          onRefresh: () => {
-            console.log('ScrollTrigger refreshed, width:', filmstrip.scrollWidth);
-          }
-        }
-      });
-    }
-
-    function checkAllLoaded() {
-      // 延迟一点确保 DOM 完全渲染
-      setTimeout(() => {
-        ScrollTrigger.refresh();
-        initHorizontalScroll();
-      }, 100);
-    }
-
-    // 等待所有图片加载完成后再初始化横向滚动
-    const images = filmstrip.querySelectorAll('img');
-    let loadedImages = 0;
-    const totalImages = images.length;
-
-    if (totalImages === 0) {
-      checkAllLoaded();
-    } else {
-      images.forEach(img => {
-        if (img.complete) {
-          loadedImages++;
-        } else {
-          img.addEventListener('load', () => {
-            loadedImages++;
-            if (loadedImages >= totalImages) checkAllLoaded();
-          });
-          img.addEventListener('error', () => {
-            loadedImages++;
-            if (loadedImages >= totalImages) checkAllLoaded();
-          });
-        }
-      });
-
-      // 立即检查是否已缓存
-      if (loadedImages >= totalImages) {
-        checkAllLoaded();
-      }
-
-      // 多重保险：多个时间点强制初始化
-      [1000, 2000, 3000].forEach(delay => {
-        setTimeout(() => {
-          if (!horizontalScrollInitialized) {
-            console.log(`Fallback ${delay}ms: forcing scroll initialization`);
-            checkAllLoaded();
-          }
-        }, delay);
-      });
-    }
 
     // 窗口大小改变时刷新
     let resizeTimer;
@@ -721,8 +662,7 @@
         gsap.to(filmstrip, {
           x: newX,
           duration: 0.5,
-          ease: "power2.out",
-          onUpdate: () => ScrollTrigger.update()
+          ease: "power2.out"
         });
       });
 
@@ -738,10 +678,120 @@
         gsap.to(filmstrip, {
           x: newX,
           duration: 0.5,
-          ease: "power2.out",
-          onUpdate: () => ScrollTrigger.update()
+          ease: "power2.out"
         });
       });
+
+      // 拖拽和触摸滑动功能
+      let isDragging = false;
+      let startX = 0;
+      let currentTranslateX = 0;
+      let prevTranslateX = 0;
+
+      // 鼠标拖拽
+      filmstrip.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        startX = e.pageX;
+        prevTranslateX = getCurrentX();
+        filmstrip.style.cursor = 'grabbing';
+        filmstrip.style.transition = 'none';
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const diffX = e.pageX - startX;
+        currentTranslateX = prevTranslateX + diffX;
+
+        // 限制边界
+        const maxScroll = getMaxScroll();
+        if (currentTranslateX > 0) currentTranslateX = 0;
+        if (currentTranslateX < maxScroll) currentTranslateX = maxScroll;
+
+        gsap.set(filmstrip, { x: currentTranslateX });
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (isDragging) {
+          isDragging = false;
+          filmstrip.style.cursor = 'grab';
+          filmstrip.style.transition = 'transform 0.5s ease-out';
+        }
+      });
+
+      // 触摸滑动
+      filmstrip.addEventListener('touchstart', (e) => {
+        isDragging = true;
+        startX = e.touches[0].pageX;
+        prevTranslateX = getCurrentX();
+        filmstrip.style.transition = 'none';
+      }, { passive: true });
+
+      filmstrip.addEventListener('touchmove', (e) => {
+        if (!isDragging) return;
+        const diffX = e.touches[0].pageX - startX;
+        currentTranslateX = prevTranslateX + diffX;
+
+        // 限制边界
+        const maxScroll = getMaxScroll();
+        if (currentTranslateX > 0) currentTranslateX = 0;
+        if (currentTranslateX < maxScroll) currentTranslateX = maxScroll;
+
+        gsap.set(filmstrip, { x: currentTranslateX });
+      }, { passive: true });
+
+      filmstrip.addEventListener('touchend', () => {
+        isDragging = false;
+        filmstrip.style.transition = 'transform 0.5s ease-out';
+      });
+
+      // 触控板水平滚动支持（优化版）
+      const wrapper = document.querySelector('.filmstrip-wrapper');
+      if (wrapper) {
+        let isScrolling = false;
+        let targetX = getCurrentX();
+        let rafId = null;
+
+        function smoothScroll() {
+          if (!isScrolling) return;
+
+          const currentX = getCurrentX();
+          const diff = targetX - currentX;
+
+          if (Math.abs(diff) < 0.5) {
+            gsap.set(filmstrip, { x: targetX });
+            isScrolling = false;
+            return;
+          }
+
+          // 使用更平滑的插值
+          const newX = currentX + diff * 0.15;
+          gsap.set(filmstrip, { x: newX });
+
+          rafId = requestAnimationFrame(smoothScroll);
+        }
+
+        wrapper.addEventListener('wheel', (e) => {
+          // 检测水平滚动或触控板左右滑动手势
+          if (Math.abs(e.deltaX) > Math.abs(e.deltaY) * 0.5) {
+            e.preventDefault();
+
+            const maxScroll = getMaxScroll();
+            targetX = targetX - e.deltaX * 1.5;
+
+            // 限制边界
+            if (targetX > 0) targetX = 0;
+            if (targetX < maxScroll) targetX = maxScroll;
+
+            if (!isScrolling) {
+              isScrolling = true;
+              rafId = requestAnimationFrame(smoothScroll);
+            }
+          }
+        }, { passive: false });
+      }
+
+      // 设置初始光标样式
+      filmstrip.style.cursor = 'grab';
     })();
   </script>
 </body>
